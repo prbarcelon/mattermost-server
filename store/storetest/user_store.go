@@ -29,10 +29,10 @@ func TestUserStore(t *testing.T, ss store.Store) {
 	// t.Run("Update", func(t *testing.T) { testUserStoreUpdate(t, ss) })
 	// t.Run("UpdateUpdateAt", func(t *testing.T) { testUserStoreUpdateUpdateAt(t, ss) })
 	// t.Run("UpdateFailedPasswordAttempts", func(t *testing.T) { testUserStoreUpdateFailedPasswordAttempts(t, ss) })
-	t.Run("Get", func(t *testing.T) { testUserStoreGet(t, ss) })
+	// t.Run("Get", func(t *testing.T) { testUserStoreGet(t, ss) })
 	// t.Run("UserCount", func(t *testing.T) { testUserCount(t, ss) })
-	t.Run("GetAllUsingAuthService", func(t *testing.T) { testGetAllUsingAuthService(t, ss) })
-	t.Run("GetAllProfiles", func(t *testing.T) { testUserStoreGetAllProfiles(t, ss) })
+	// t.Run("GetAllUsingAuthService", func(t *testing.T) { testGetAllUsingAuthService(t, ss) })
+	// t.Run("GetAllProfiles", func(t *testing.T) { testUserStoreGetAllProfiles(t, ss) })
 	// t.Run("GetProfiles", func(t *testing.T) { testUserStoreGetProfiles(t, ss) })
 	// t.Run("GetProfilesInChannel", func(t *testing.T) { testUserStoreGetProfilesInChannel(t, ss) })
 	// t.Run("GetProfilesInChannelByStatus", func(t *testing.T) { testUserStoreGetProfilesInChannelByStatus(t, ss) })
@@ -42,7 +42,7 @@ func TestUserStore(t *testing.T, ss store.Store) {
 	// t.Run("GetProfilesByIds", func(t *testing.T) { testUserStoreGetProfilesByIds(t, ss) })
 	// t.Run("GetProfilesByUsernames", func(t *testing.T) { testUserStoreGetProfilesByUsernames(t, ss) })
 	// t.Run("GetSystemAdminProfiles", func(t *testing.T) { testUserStoreGetSystemAdminProfiles(t, ss) })
-	// t.Run("GetByEmail", func(t *testing.T) { testUserStoreGetByEmail(t, ss) })
+	t.Run("GetByEmail", func(t *testing.T) { testUserStoreGetByEmail(t, ss) })
 	// t.Run("GetByAuthData", func(t *testing.T) { testUserStoreGetByAuthData(t, ss) })
 	// t.Run("GetByUsername", func(t *testing.T) { testUserStoreGetByUsername(t, ss) })
 	// t.Run("GetForLogin", func(t *testing.T) { testUserStoreGetForLogin(t, ss) })
@@ -63,7 +63,7 @@ func TestUserStore(t *testing.T, ss store.Store) {
 	// t.Run("AnalyticsGetSystemAdminCount", func(t *testing.T) { testUserStoreAnalyticsGetSystemAdminCount(t, ss) })
 	// t.Run("GetProfilesNotInTeam", func(t *testing.T) { testUserStoreGetProfilesNotInTeam(t, ss) })
 	// t.Run("ClearAllCustomRoleAssignments", func(t *testing.T) { testUserStoreClearAllCustomRoleAssignments(t, ss) })
-	t.Run("GetAllAfter", func(t *testing.T) { testUserStoreGetAllAfter(t, ss) })
+	// t.Run("GetAllAfter", func(t *testing.T) { testUserStoreGetAllAfter(t, ss) })
 }
 
 func testUserStoreSave(t *testing.T, ss store.Store) {
@@ -697,88 +697,104 @@ func testUserStoreGetProfilesWithoutTeam(t *testing.T, ss store.Store) {
 func testUserStoreGetAllProfilesInChannel(t *testing.T, ss store.Store) {
 	teamId := model.NewId()
 
-	u1 := &model.User{}
-	u1.Email = MakeEmail()
-	store.Must(ss.User().Save(u1))
+	u1 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Username: "u1" + model.NewId(),
+	})).(*model.User)
 	defer func() { store.Must(ss.User().PermanentDelete(u1.Id)) }()
 	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u1.Id}, -1))
 
-	u2 := &model.User{}
-	u2.Email = MakeEmail()
-	store.Must(ss.User().Save(u2))
+	u2 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Username: "u2" + model.NewId(),
+	})).(*model.User)
 	defer func() { store.Must(ss.User().PermanentDelete(u2.Id)) }()
 	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u2.Id}, -1))
 
-	c1 := model.Channel{}
-	c1.TeamId = teamId
-	c1.DisplayName = "Profiles in channel"
-	c1.Name = "profiles-" + model.NewId()
-	c1.Type = model.CHANNEL_OPEN
+	u3 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Username: "u3" + model.NewId(),
+	})).(*model.User)
+	defer func() { store.Must(ss.User().PermanentDelete(u3.Id)) }()
+	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u3.Id}, -1))
+	store.Must(ss.Bot().Save(&model.Bot{
+		UserId:    u3.Id,
+		Username:  u3.Username,
+		CreatorId: u1.Id,
+	}))
+	u3.IsBot = true
 
-	c2 := model.Channel{}
-	c2.TeamId = teamId
-	c2.DisplayName = "Profiles in private"
-	c2.Name = "profiles-" + model.NewId()
-	c2.Type = model.CHANNEL_PRIVATE
+	c1 := store.Must(ss.Channel().Save(&model.Channel{
+		TeamId:      teamId,
+		DisplayName: "Profiles in channel",
+		Name:        "profiles-" + model.NewId(),
+		Type:        model.CHANNEL_OPEN,
+	}, -1)).(*model.Channel)
 
-	store.Must(ss.Channel().Save(&c1, -1))
-	store.Must(ss.Channel().Save(&c2, -1))
+	c2 := store.Must(ss.Channel().Save(&model.Channel{
+		TeamId:      teamId,
+		DisplayName: "Profiles in private",
+		Name:        "profiles-" + model.NewId(),
+		Type:        model.CHANNEL_PRIVATE,
+	}, -1)).(*model.Channel)
 
-	m1 := model.ChannelMember{}
-	m1.ChannelId = c1.Id
-	m1.UserId = u1.Id
-	m1.NotifyProps = model.GetDefaultChannelNotifyProps()
+	store.Must(ss.Channel().SaveMember(&model.ChannelMember{
+		ChannelId:   c1.Id,
+		UserId:      u1.Id,
+		NotifyProps: model.GetDefaultChannelNotifyProps(),
+	}))
 
-	m2 := model.ChannelMember{}
-	m2.ChannelId = c1.Id
-	m2.UserId = u2.Id
-	m2.NotifyProps = model.GetDefaultChannelNotifyProps()
+	store.Must(ss.Channel().SaveMember(&model.ChannelMember{
+		ChannelId:   c1.Id,
+		UserId:      u2.Id,
+		NotifyProps: model.GetDefaultChannelNotifyProps(),
+	}))
 
-	m3 := model.ChannelMember{}
-	m3.ChannelId = c2.Id
-	m3.UserId = u1.Id
-	m3.NotifyProps = model.GetDefaultChannelNotifyProps()
+	store.Must(ss.Channel().SaveMember(&model.ChannelMember{
+		ChannelId:   c1.Id,
+		UserId:      u3.Id,
+		NotifyProps: model.GetDefaultChannelNotifyProps(),
+	}))
 
-	store.Must(ss.Channel().SaveMember(&m1))
-	store.Must(ss.Channel().SaveMember(&m2))
-	store.Must(ss.Channel().SaveMember(&m3))
+	store.Must(ss.Channel().SaveMember(&model.ChannelMember{
+		ChannelId:   c2.Id,
+		UserId:      u1.Id,
+		NotifyProps: model.GetDefaultChannelNotifyProps(),
+	}))
 
-	if r1 := <-ss.User().GetAllProfilesInChannel(c1.Id, false); r1.Err != nil {
-		t.Fatal(r1.Err)
-	} else {
-		users := r1.Data.(map[string]*model.User)
-		if len(users) != 2 {
-			t.Fatal("invalid returned users")
-		}
+	t.Run("all profiles in channel 1, no caching", func(t *testing.T) {
+		result := <-ss.User().GetAllProfilesInChannel(c1.Id, false)
+		require.Nil(t, result.Err)
+		assert.Equal(t, map[string]*model.User{
+			u1.Id: sanitized(u1),
+			u2.Id: sanitized(u2),
+			u3.Id: sanitized(u3),
+		}, result.Data.(map[string]*model.User))
+	})
 
-		if users[u1.Id].Id != u1.Id {
-			t.Fatal("invalid returned user")
-		}
-	}
+	t.Run("all profiles in channel 2, no caching", func(t *testing.T) {
+		result := <-ss.User().GetAllProfilesInChannel(c2.Id, false)
+		require.Nil(t, result.Err)
+		assert.Equal(t, map[string]*model.User{
+			u1.Id: sanitized(u1),
+		}, result.Data.(map[string]*model.User))
+	})
 
-	if r2 := <-ss.User().GetAllProfilesInChannel(c2.Id, false); r2.Err != nil {
-		t.Fatal(r2.Err)
-	} else {
-		if len(r2.Data.(map[string]*model.User)) != 1 {
-			t.Fatal("should have returned empty map")
-		}
-	}
+	t.Run("all profiles in channel 2, caching", func(t *testing.T) {
+		result := <-ss.User().GetAllProfilesInChannel(c2.Id, true)
+		require.Nil(t, result.Err)
+		assert.Equal(t, map[string]*model.User{
+			u1.Id: sanitized(u1),
+		}, result.Data.(map[string]*model.User))
+	})
 
-	if r2 := <-ss.User().GetAllProfilesInChannel(c2.Id, true); r2.Err != nil {
-		t.Fatal(r2.Err)
-	} else {
-		if len(r2.Data.(map[string]*model.User)) != 1 {
-			t.Fatal("should have returned empty map")
-		}
-	}
-
-	if r2 := <-ss.User().GetAllProfilesInChannel(c2.Id, true); r2.Err != nil {
-		t.Fatal(r2.Err)
-	} else {
-		if len(r2.Data.(map[string]*model.User)) != 1 {
-			t.Fatal("should have returned empty map")
-		}
-	}
+	t.Run("all profiles in channel 2, caching [repeated]", func(t *testing.T) {
+		result := <-ss.User().GetAllProfilesInChannel(c2.Id, true)
+		require.Nil(t, result.Err)
+		assert.Equal(t, map[string]*model.User{
+			u1.Id: sanitized(u1),
+		}, result.Data.(map[string]*model.User))
+	})
 
 	ss.User().InvalidateProfilesInChannelCacheByUser(u1.Id)
 	ss.User().InvalidateProfilesInChannelCache(c2.Id)
@@ -787,240 +803,166 @@ func testUserStoreGetAllProfilesInChannel(t *testing.T, ss store.Store) {
 func testUserStoreGetProfilesNotInChannel(t *testing.T, ss store.Store) {
 	teamId := model.NewId()
 
-	u1 := &model.User{}
-	u1.Email = MakeEmail()
-	store.Must(ss.User().Save(u1))
+	u1 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Username: "u1" + model.NewId(),
+	})).(*model.User)
 	defer func() { store.Must(ss.User().PermanentDelete(u1.Id)) }()
 	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u1.Id}, -1))
 
-	u2 := &model.User{}
-	u2.Email = MakeEmail()
-	store.Must(ss.User().Save(u2))
+	u2 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Username: "u2" + model.NewId(),
+	})).(*model.User)
 	defer func() { store.Must(ss.User().PermanentDelete(u2.Id)) }()
 	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u2.Id}, -1))
 
-	c1 := model.Channel{}
-	c1.TeamId = teamId
-	c1.DisplayName = "Profiles in channel"
-	c1.Name = "profiles-" + model.NewId()
-	c1.Type = model.CHANNEL_OPEN
+	u3 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Username: "u3" + model.NewId(),
+	})).(*model.User)
+	defer func() { store.Must(ss.User().PermanentDelete(u3.Id)) }()
+	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u3.Id}, -1))
+	store.Must(ss.Bot().Save(&model.Bot{
+		UserId:    u3.Id,
+		Username:  u3.Username,
+		CreatorId: u1.Id,
+	}))
+	u3.IsBot = true
 
-	c2 := model.Channel{}
-	c2.TeamId = teamId
-	c2.DisplayName = "Profiles in private"
-	c2.Name = "profiles-" + model.NewId()
-	c2.Type = model.CHANNEL_PRIVATE
+	c1 := store.Must(ss.Channel().Save(&model.Channel{
+		TeamId:      teamId,
+		DisplayName: "Profiles in channel",
+		Name:        "profiles-" + model.NewId(),
+		Type:        model.CHANNEL_OPEN,
+	}, -1)).(*model.Channel)
 
-	store.Must(ss.Channel().Save(&c1, -1))
-	store.Must(ss.Channel().Save(&c2, -1))
+	c2 := store.Must(ss.Channel().Save(&model.Channel{
+		TeamId:      teamId,
+		DisplayName: "Profiles in private",
+		Name:        "profiles-" + model.NewId(),
+		Type:        model.CHANNEL_PRIVATE,
+	}, -1)).(*model.Channel)
 
-	if r1 := <-ss.User().GetProfilesNotInChannel(teamId, c1.Id, 0, 100); r1.Err != nil {
-		t.Fatal(r1.Err)
-	} else {
-		users := r1.Data.([]*model.User)
-		if len(users) != 2 {
-			t.Fatal("invalid returned users")
-		}
+	t.Run("get team 1, channel 1, offset 0, limit 100", func(t *testing.T) {
+		result := <-ss.User().GetProfilesNotInChannel(teamId, c1.Id, 0, 100)
+		require.Nil(t, result.Err)
+		assert.Equal(t, []*model.User{
+			sanitized(u1),
+			sanitized(u2),
+			sanitized(u3),
+		}, result.Data.([]*model.User))
+	})
 
-		found := false
-		for _, u := range users {
-			if u.Id == u1.Id {
-				found = true
-			}
-		}
+	t.Run("get team 1, channel 2, offset 0, limit 100", func(t *testing.T) {
+		result := <-ss.User().GetProfilesNotInChannel(teamId, c2.Id, 0, 100)
+		require.Nil(t, result.Err)
+		assert.Equal(t, []*model.User{
+			sanitized(u1),
+			sanitized(u2),
+			sanitized(u3),
+		}, result.Data.([]*model.User))
+	})
 
-		if !found {
-			t.Fatal("missing user")
-		}
-	}
+	store.Must(ss.Channel().SaveMember(&model.ChannelMember{
+		ChannelId:   c1.Id,
+		UserId:      u1.Id,
+		NotifyProps: model.GetDefaultChannelNotifyProps(),
+	}))
 
-	if r2 := <-ss.User().GetProfilesNotInChannel(teamId, c2.Id, 0, 100); r2.Err != nil {
-		t.Fatal(r2.Err)
-	} else {
-		if len(r2.Data.([]*model.User)) != 2 {
-			t.Fatal("invalid returned users")
-		}
-	}
+	store.Must(ss.Channel().SaveMember(&model.ChannelMember{
+		ChannelId:   c1.Id,
+		UserId:      u2.Id,
+		NotifyProps: model.GetDefaultChannelNotifyProps(),
+	}))
 
-	m1 := model.ChannelMember{}
-	m1.ChannelId = c1.Id
-	m1.UserId = u1.Id
-	m1.NotifyProps = model.GetDefaultChannelNotifyProps()
+	store.Must(ss.Channel().SaveMember(&model.ChannelMember{
+		ChannelId:   c1.Id,
+		UserId:      u3.Id,
+		NotifyProps: model.GetDefaultChannelNotifyProps(),
+	}))
 
-	m2 := model.ChannelMember{}
-	m2.ChannelId = c1.Id
-	m2.UserId = u2.Id
-	m2.NotifyProps = model.GetDefaultChannelNotifyProps()
+	store.Must(ss.Channel().SaveMember(&model.ChannelMember{
+		ChannelId:   c2.Id,
+		UserId:      u1.Id,
+		NotifyProps: model.GetDefaultChannelNotifyProps(),
+	}))
 
-	m3 := model.ChannelMember{}
-	m3.ChannelId = c2.Id
-	m3.UserId = u1.Id
-	m3.NotifyProps = model.GetDefaultChannelNotifyProps()
+	t.Run("get team 1, channel 1, offset 0, limit 100, after update", func(t *testing.T) {
+		result := <-ss.User().GetProfilesNotInChannel(teamId, c1.Id, 0, 100)
+		require.Nil(t, result.Err)
+		assert.Equal(t, []*model.User{}, result.Data.([]*model.User))
+	})
 
-	store.Must(ss.Channel().SaveMember(&m1))
-	store.Must(ss.Channel().SaveMember(&m2))
-	store.Must(ss.Channel().SaveMember(&m3))
-
-	if r1 := <-ss.User().GetProfilesNotInChannel(teamId, c1.Id, 0, 100); r1.Err != nil {
-		t.Fatal(r1.Err)
-	} else {
-		users := r1.Data.([]*model.User)
-		if len(users) != 0 {
-			t.Fatal("invalid returned users")
-		}
-	}
-
-	if r2 := <-ss.User().GetProfilesNotInChannel(teamId, c2.Id, 0, 100); r2.Err != nil {
-		t.Fatal(r2.Err)
-	} else {
-		if len(r2.Data.([]*model.User)) != 1 {
-			t.Fatal("should have had 1 user not in channel")
-		}
-	}
+	t.Run("get team 1, channel 2, offset 0, limit 100, after update", func(t *testing.T) {
+		result := <-ss.User().GetProfilesNotInChannel(teamId, c2.Id, 0, 100)
+		require.Nil(t, result.Err)
+		assert.Equal(t, []*model.User{
+			sanitized(u2),
+			sanitized(u3),
+		}, result.Data.([]*model.User))
+	})
 }
 
 func testUserStoreGetProfilesByIds(t *testing.T, ss store.Store) {
 	teamId := model.NewId()
 
-	u1 := &model.User{}
-	u1.Email = MakeEmail()
-	store.Must(ss.User().Save(u1))
+	u1 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Username: "u1" + model.NewId(),
+	})).(*model.User)
 	defer func() { store.Must(ss.User().PermanentDelete(u1.Id)) }()
 	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u1.Id}, -1))
 
-	u2 := &model.User{}
-	u2.Email = MakeEmail()
-	store.Must(ss.User().Save(u2))
+	u2 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Username: "u2" + model.NewId(),
+	})).(*model.User)
 	defer func() { store.Must(ss.User().PermanentDelete(u2.Id)) }()
 	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u2.Id}, -1))
 
-	if r1 := <-ss.User().GetProfileByIds([]string{u1.Id}, false); r1.Err != nil {
-		t.Fatal(r1.Err)
-	} else {
-		users := r1.Data.([]*model.User)
-		if len(users) != 1 {
-			t.Fatal("invalid returned users")
-		}
+	u3 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Username: "u3" + model.NewId(),
+	})).(*model.User)
+	defer func() { store.Must(ss.User().PermanentDelete(u3.Id)) }()
+	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u3.Id}, -1))
+	store.Must(ss.Bot().Save(&model.Bot{
+		UserId:    u3.Id,
+		Username:  u3.Username,
+		CreatorId: u1.Id,
+	}))
+	u3.IsBot = true
 
-		found := false
-		for _, u := range users {
-			if u.Id == u1.Id {
-				found = true
-			}
-		}
+	t.Run("get u1 by id, no caching", func(t *testing.T) {
+		result := <-ss.User().GetProfileByIds([]string{u1.Id}, false)
+		require.Nil(t, result.Err)
+		assert.Equal(t, []*model.User{sanitized(u1)}, result.Data.([]*model.User))
+	})
 
-		if !found {
-			t.Fatal("missing user")
-		}
-	}
+	t.Run("get u1 by id, caching", func(t *testing.T) {
+		result := <-ss.User().GetProfileByIds([]string{u1.Id}, true)
+		require.Nil(t, result.Err)
+		assert.Equal(t, []*model.User{sanitized(u1)}, result.Data.([]*model.User))
+	})
 
-	if r1 := <-ss.User().GetProfileByIds([]string{u1.Id}, true); r1.Err != nil {
-		t.Fatal(r1.Err)
-	} else {
-		users := r1.Data.([]*model.User)
-		if len(users) != 1 {
-			t.Fatal("invalid returned users")
-		}
+	t.Run("get u1, u2, u3 by id, no caching", func(t *testing.T) {
+		result := <-ss.User().GetProfileByIds([]string{u1.Id, u2.Id, u3.Id}, false)
+		require.Nil(t, result.Err)
+		assert.Equal(t, []*model.User{sanitized(u1), sanitized(u2), sanitized(u3)}, result.Data.([]*model.User))
+	})
 
-		found := false
-		for _, u := range users {
-			if u.Id == u1.Id {
-				found = true
-			}
-		}
+	t.Run("get u1, u2, u3 by id, caching", func(t *testing.T) {
+		result := <-ss.User().GetProfileByIds([]string{u1.Id, u2.Id, u3.Id}, true)
+		require.Nil(t, result.Err)
+		assert.Equal(t, []*model.User{sanitized(u1), sanitized(u2), sanitized(u3)}, result.Data.([]*model.User))
+	})
 
-		if !found {
-			t.Fatal("missing user")
-		}
-	}
-
-	if r1 := <-ss.User().GetProfileByIds([]string{u1.Id, u2.Id}, true); r1.Err != nil {
-		t.Fatal(r1.Err)
-	} else {
-		users := r1.Data.([]*model.User)
-		if len(users) != 2 {
-			t.Fatal("invalid returned users")
-		}
-
-		found := false
-		for _, u := range users {
-			if u.Id == u1.Id {
-				found = true
-			}
-		}
-
-		if !found {
-			t.Fatal("missing user")
-		}
-	}
-
-	if r1 := <-ss.User().GetProfileByIds([]string{u1.Id, u2.Id}, true); r1.Err != nil {
-		t.Fatal(r1.Err)
-	} else {
-		users := r1.Data.([]*model.User)
-		if len(users) != 2 {
-			t.Fatal("invalid returned users")
-		}
-
-		found := false
-		for _, u := range users {
-			if u.Id == u1.Id {
-				found = true
-			}
-		}
-
-		if !found {
-			t.Fatal("missing user")
-		}
-	}
-
-	if r1 := <-ss.User().GetProfileByIds([]string{u1.Id, u2.Id}, false); r1.Err != nil {
-		t.Fatal(r1.Err)
-	} else {
-		users := r1.Data.([]*model.User)
-		if len(users) != 2 {
-			t.Fatal("invalid returned users")
-		}
-
-		found := false
-		for _, u := range users {
-			if u.Id == u1.Id {
-				found = true
-			}
-		}
-
-		if !found {
-			t.Fatal("missing user")
-		}
-	}
-
-	if r1 := <-ss.User().GetProfileByIds([]string{u1.Id}, false); r1.Err != nil {
-		t.Fatal(r1.Err)
-	} else {
-		users := r1.Data.([]*model.User)
-		if len(users) != 1 {
-			t.Fatal("invalid returned users")
-		}
-
-		found := false
-		for _, u := range users {
-			if u.Id == u1.Id {
-				found = true
-			}
-		}
-
-		if !found {
-			t.Fatal("missing user")
-		}
-	}
-
-	if r2 := <-ss.User().GetProfiles("123", 0, 100); r2.Err != nil {
-		t.Fatal(r2.Err)
-	} else {
-		if len(r2.Data.([]*model.User)) != 0 {
-			t.Fatal("should have returned empty array")
-		}
-	}
+	t.Run("get unknown id, caching", func(t *testing.T) {
+		result := <-ss.User().GetProfileByIds([]string{"123"}, true)
+		require.Nil(t, result.Err)
+		assert.Equal(t, []*model.User{}, result.Data.([]*model.User))
+	})
 }
 
 func testUserStoreGetProfilesByUsernames(t *testing.T, ss store.Store) {
@@ -1113,45 +1055,106 @@ func testUserStoreGetProfilesByUsernames(t *testing.T, ss store.Store) {
 func testUserStoreGetSystemAdminProfiles(t *testing.T, ss store.Store) {
 	teamId := model.NewId()
 
-	u1 := &model.User{}
-	u1.Email = MakeEmail()
-	u1.Roles = model.SYSTEM_USER_ROLE_ID + " " + model.SYSTEM_ADMIN_ROLE_ID
-	store.Must(ss.User().Save(u1))
+	u1 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Roles:    model.SYSTEM_USER_ROLE_ID + " " + model.SYSTEM_ADMIN_ROLE_ID,
+		Username: "u1" + model.NewId(),
+	})).(*model.User)
 	defer func() { store.Must(ss.User().PermanentDelete(u1.Id)) }()
 	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u1.Id}, -1))
 
-	u2 := &model.User{}
-	u2.Email = MakeEmail()
-	store.Must(ss.User().Save(u2))
+	u2 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Username: "u2" + model.NewId(),
+	})).(*model.User)
 	defer func() { store.Must(ss.User().PermanentDelete(u2.Id)) }()
 	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u2.Id}, -1))
 
-	if r1 := <-ss.User().GetSystemAdminProfiles(); r1.Err != nil {
-		t.Fatal(r1.Err)
-	} else {
-		users := r1.Data.(map[string]*model.User)
-		if len(users) <= 0 {
-			t.Fatal("invalid returned system admin users")
-		}
-	}
+	u3 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Roles:    model.SYSTEM_USER_ROLE_ID + " " + model.SYSTEM_ADMIN_ROLE_ID,
+		Username: "u3" + model.NewId(),
+	})).(*model.User)
+	defer func() { store.Must(ss.User().PermanentDelete(u3.Id)) }()
+	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u3.Id}, -1))
+	store.Must(ss.Bot().Save(&model.Bot{
+		UserId:    u3.Id,
+		Username:  u3.Username,
+		CreatorId: u1.Id,
+	}))
+	u3.IsBot = true
+
+	t.Run("all system admin profiles", func(t *testing.T) {
+		result := <-ss.User().GetSystemAdminProfiles()
+		require.Nil(t, result.Err)
+		assert.Equal(t, map[string]*model.User{
+			u1.Id: sanitized(u1),
+			u3.Id: sanitized(u3),
+		}, result.Data.(map[string]*model.User))
+	})
 }
 
 func testUserStoreGetByEmail(t *testing.T, ss store.Store) {
-	teamid := model.NewId()
+	teamId := model.NewId()
 
-	u1 := &model.User{}
-	u1.Email = MakeEmail()
-	store.Must(ss.User().Save(u1))
+	u1 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Roles:    model.SYSTEM_USER_ROLE_ID + " " + model.SYSTEM_ADMIN_ROLE_ID,
+		Username: "u1" + model.NewId(),
+	})).(*model.User)
 	defer func() { store.Must(ss.User().PermanentDelete(u1.Id)) }()
-	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamid, UserId: u1.Id}, -1))
+	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u1.Id}, -1))
 
-	if err := (<-ss.User().GetByEmail(u1.Email)).Err; err != nil {
-		t.Fatal(err)
-	}
+	u2 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Username: "u2" + model.NewId(),
+	})).(*model.User)
+	defer func() { store.Must(ss.User().PermanentDelete(u2.Id)) }()
+	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u2.Id}, -1))
 
-	if err := (<-ss.User().GetByEmail("")).Err; err == nil {
-		t.Fatal("Should have failed because of missing email")
-	}
+	u3 := store.Must(ss.User().Save(&model.User{
+		Email:    MakeEmail(),
+		Roles:    model.SYSTEM_USER_ROLE_ID + " " + model.SYSTEM_ADMIN_ROLE_ID,
+		Username: "u3" + model.NewId(),
+	})).(*model.User)
+	defer func() { store.Must(ss.User().PermanentDelete(u3.Id)) }()
+	store.Must(ss.Team().SaveMember(&model.TeamMember{TeamId: teamId, UserId: u3.Id}, -1))
+	store.Must(ss.Bot().Save(&model.Bot{
+		UserId:    u3.Id,
+		Username:  u3.Username,
+		CreatorId: u1.Id,
+	}))
+	u3.IsBot = true
+
+	t.Run("get u1 by email", func(t *testing.T) {
+		result := <-ss.User().GetByEmail(u1.Email)
+		require.Nil(t, result.Err)
+		assert.Equal(t, u1, result.Data.(*model.User))
+	})
+
+	t.Run("get u2 by email", func(t *testing.T) {
+		result := <-ss.User().GetByEmail(u2.Email)
+		require.Nil(t, result.Err)
+		assert.Equal(t, u2, result.Data.(*model.User))
+	})
+
+	t.Run("get u3 by email", func(t *testing.T) {
+		result := <-ss.User().GetByEmail(u3.Email)
+		require.Nil(t, result.Err)
+		assert.Equal(t, u3, result.Data.(*model.User))
+	})
+
+	t.Run("get by empty email", func(t *testing.T) {
+		result := <-ss.User().GetByEmail("")
+		require.NotNil(t, result.Err)
+		require.Equal(t, result.Err.Id, store.MISSING_ACCOUNT_ERROR)
+	})
+
+	t.Run("get by unknown", func(t *testing.T) {
+		result := <-ss.User().GetByEmail("unknown")
+		require.NotNil(t, result.Err)
+		require.Equal(t, result.Err.Id, store.MISSING_ACCOUNT_ERROR)
+	})
 }
 
 func testUserStoreGetByAuthData(t *testing.T, ss store.Store) {

@@ -45,5 +45,33 @@ func TestRandom(t *testing.T) {
 	builder = builder.Where("Id = :UserId").Bind("UserId", "id")
 
 	assert.Equal(t, "SELECT u.*, b.UserId IS NOT NULL AS IsBot FROM Users u LEFT JOIN Bots b ON ( b.UserId = u.Id ) WHERE Id = :UserId", builder.String())
-	assert.Equal(t, map[string]interface{}{"UserId": "id"}, builder.Bindings())
+	assert.Equal(t, map[string]interface{}{"UserId": "id"}, builder.Args())
+}
+
+func TestBind(t *testing.T) {
+	// t.Run("empty array binding", func(t *testing.T) {
+	// 	builder := New().Select("*").From("Users").Where("Id IN (:Ids)").Bind("Ids", []string{})
+	// 	assert.Equal(t, "SELECT * FROM Users WHERE Id IN ()", builder.String())
+	// 	assert.Equal(t, map[string]interface{}{}, builder.Args())
+	// })
+
+	t.Run("array with multiple string elements", func(t *testing.T) {
+		builder := New().Select("*").From("Users").Where("Id IN (:Ids)").Bind("Ids", []string{"id1", "id2", "id3"})
+		assert.Equal(t, "SELECT * FROM Users WHERE Id IN (:Ids_0, :Ids_1, :Ids_2)", builder.String())
+		assert.Equal(t, map[string]interface{}{
+			"Ids_0": "id1",
+			"Ids_1": "id2",
+			"Ids_2": "id3",
+		}, builder.Args())
+	})
+
+	t.Run("array with multiple integer elements", func(t *testing.T) {
+		builder := New().Select("*").From("Users").Where("Count IN (:Ids)").Bind("Ids", []int{1, 2, 3})
+		assert.Equal(t, "SELECT * FROM Users WHERE Count IN (:Ids_0, :Ids_1, :Ids_2)", builder.String())
+		assert.Equal(t, map[string]interface{}{
+			"Ids_0": 1,
+			"Ids_1": 2,
+			"Ids_2": 3,
+		}, builder.Args())
+	})
 }

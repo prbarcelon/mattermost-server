@@ -1,6 +1,8 @@
 package querybuilder
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -12,7 +14,7 @@ type Builder struct {
 	orderByStatements []string
 	offset            string
 	limit             string
-	bindings          map[string]interface{}
+	args              map[string]interface{}
 }
 
 func New() *Builder {
@@ -35,11 +37,11 @@ func (b *Builder) Clone() *Builder {
 	copy(clone.whereStatements, b.whereStatements)
 	copy(clone.orderByStatements, b.orderByStatements)
 
-	if len(b.bindings) > 0 {
-		clone.bindings = make(map[string]interface{}, len(b.bindings))
+	if len(b.args) > 0 {
+		clone.args = make(map[string]interface{}, len(b.args))
 	}
-	for key, value := range b.bindings {
-		clone.bindings[key] = value
+	for key, value := range b.args {
+		clone.args[key] = value
 	}
 
 	return clone
@@ -59,9 +61,23 @@ func (b *Builder) From(sql string) *Builder {
 	return clone
 }
 
+func (b *Builder) Join(sql string) *Builder {
+	clone := b.Clone()
+	clone.joinStatements = append(clone.joinStatements, "INNER JOIN "+sql)
+
+	return clone
+}
+
 func (b *Builder) LeftJoin(sql string) *Builder {
 	clone := b.Clone()
 	clone.joinStatements = append(clone.joinStatements, "LEFT JOIN "+sql)
+
+	return clone
+}
+
+func (b *Builder) RightJoin(sql string) *Builder {
+	clone := b.Clone()
+	clone.joinStatements = append(clone.joinStatements, "RIGHT JOIN "+sql)
 
 	return clone
 }
@@ -83,10 +99,15 @@ func (b *Builder) OrderBy(sql string) *Builder {
 func (b *Builder) Bind(key string, value interface{}) *Builder {
 	clone := b.Clone()
 
-	if clone.bindings == nil {
-		clone.bindings = make(map[string]interface{})
+	// It's a natural mistake to write the key prefixed with the colon: fix that.
+	key = strings.TrimLeft(key, ":")
+
+	if clone.args == nil {
+		clone.args = make(map[string]interface{})
 	}
-	clone.bindings[key] = value
+	clone.args[key] = value
+
+	// TODO: panic if empty array
 
 	return clone
 }
@@ -98,6 +119,16 @@ func (b *Builder) Offset(offset string) *Builder {
 	return clone
 }
 
+func (b *Builder) OffsetInt(offset int) *Builder {
+	clone := b.Clone()
+
+	// TODO: panic on Offset already set?
+	clone.offset = ":Offset"
+	clone = clone.Bind("Offset", offset)
+
+	return clone
+}
+
 func (b *Builder) Limit(limit string) *Builder {
 	clone := b.Clone()
 	clone.limit = limit
@@ -105,7 +136,17 @@ func (b *Builder) Limit(limit string) *Builder {
 	return clone
 }
 
-func (b *Builder) String() string {
+func (b *Builder) LimitInt(limit int) *Builder {
+	clone := b.Clone()
+
+	// TODO: panic on Limit already set?
+	clone.limit = ":Limit"
+	clone = clone.Bind("Limit", limit)
+
+	return clone
+}
+
+func (b *Builder) Query() string {
 	var query string
 
 	if len(b.selectStatements) > 0 {
@@ -123,16 +164,82 @@ func (b *Builder) String() string {
 	if len(b.orderByStatements) > 0 {
 		query += " ORDER BY " + strings.Join(b.orderByStatements, ", ")
 	}
-	if len(b.offset) > 0 {
-		query += " OFFSET " + b.offset
-	}
 	if len(b.limit) > 0 {
 		query += " LIMIT " + b.limit
 	}
+	if len(b.offset) > 0 {
+		query += " OFFSET " + b.offset
+	}
+
+	// Explode any array parameters in the generated query string.
+	for key, value := range b.args {
+		rt := reflect.TypeOf(value)
+		switch rt.Kind() {
+		case reflect.Slice:
+			fallthrough
+		case reflect.Array:
+			valueLen := reflect.ValueOf(value).Len()
+
+			keys := []string{}
+			for index := 0; index < valueLen; index++ {
+				keys = append(keys, fmt.Sprintf(":%s_%d", key, index))
+			}
+
+			query = strings.Replace(query, fmt.Sprintf(":%s", key), strings.Join(keys, ", "), -1)
+		}
+	}
+
+	// func (b *Builder) BindStringArray(key string, values []string) *Builder {
+	// 	clone := b.Clone()
+
+	// 	valueKeys := make([]string, len(values))
+	// 	for index, value := range values {
+	// 		valueKey := fmt.Sprintf(":%s_%d", key, index)
+	// 		valueKeys[index] = valueKey
+
+	// 		builder.Bind(valueKey, value)
+
+	// 		props["userId"+strconv.Itoa(index)] = userId
+	// 		idQuery += ":userId" + strconv.Itoa(index)
+	// 	}
+
+	// 	clone.Bind(key,
+	// }
 
 	return query
 }
 
-func (b *Builder) Bindings() map[string]interface{} {
-	return b.bindings
+func (b *Builder) String() string {
+	return b.Query()
+}
+
+func (b *Builder) Args() map[string]interface{} {
+	args := map[string]interface{}{}
+
+	for key, value := range b.args {
+		rt := reflect.TypeOf(value)
+		switch rt.Kind() {
+		case reflect.Slice:
+			fallthrough
+		case reflect.Array:
+			switch rt.Elem().Kind() {
+			case reflect.String:
+				for index, v := range value.([]string) {
+					args[fmt.Sprintf("%s_%d", key, index)] = v
+				}
+
+			case reflect.Int:
+				for index, v := range value.([]int) {
+					args[fmt.Sprintf("%s_%d", key, index)] = v
+				}
+
+			default:
+				panic("unsupported argument array kind: " + rt.Elem().Kind().String())
+			}
+		default:
+			args[key] = value
+		}
+	}
+
+	return args
 }
