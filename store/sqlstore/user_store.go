@@ -15,6 +15,7 @@ import (
 	"github.com/mattermost/mattermost-server/einterfaces"
 	"github.com/mattermost/mattermost-server/model"
 	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/store/sqlstore/querybuilder"
 	"github.com/mattermost/mattermost-server/utils"
 )
 
@@ -319,26 +320,19 @@ func (us SqlUserStore) UpdateMfaActive(userId string, active bool) store.StoreCh
 	})
 }
 
+var commonQuery *querybuilder.Builder = querybuilder.
+	New().
+	Select("u.*").
+	Select("b.UserId IS NOT NULL AS IsBot").
+	From("Users u").
+	LeftJoin("Bots b ON ( b.UserId = u.Id )")
+
 func (us SqlUserStore) Get(id string) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
-		query := `
-			SELECT 
-				u.*, 
-				b.UserId IS NOT NULL AS IsBot 
-			FROM 
-				Users u 
-			LEFT JOIN 
-				Bots b ON ( b.UserId = u.Id ) 
-			WHERE 
-				Id = :UserId
-		`
-
-		params := map[string]interface{}{
-			"UserId": id,
-		}
+		builder := commonQuery.Where("Id = :UserId").Bind("UserId", id)
 
 		user := &model.User{}
-		if err := us.GetReplica().SelectOne(user, query, params); err == sql.ErrNoRows {
+		if err := us.GetReplica().SelectOne(user, builder.String(), builder.Bindings()); err == sql.ErrNoRows {
 			result.Err = model.NewAppError("SqlUserStore.Get", store.MISSING_ACCOUNT_ERROR, nil, "user_id="+id, http.StatusNotFound)
 			return
 		} else if err != nil {
@@ -352,20 +346,10 @@ func (us SqlUserStore) Get(id string) store.StoreChannel {
 
 func (us SqlUserStore) GetAll() store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
-		query := `
-			SELECT 
-				u.*, 
-				b.UserId IS NOT NULL AS IsBot 
-			FROM 
-				Users u 
-			LEFT JOIN 
-				Bots b ON ( b.UserId = u.Id ) 
-			ORDER BY
-				Username ASC
-		`
+		builder := commonQuery.OrderBy("Username ASC")
 
 		var data []*model.User
-		if _, err := us.GetReplica().Select(&data, query); err != nil {
+		if _, err := us.GetReplica().Select(&data, builder.String()); err != nil {
 			result.Err = model.NewAppError("SqlUserStore.GetAll", "store.sql_user.get.app_error", nil, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -376,28 +360,13 @@ func (us SqlUserStore) GetAll() store.StoreChannel {
 
 func (us SqlUserStore) GetAllAfter(limit int, afterId string) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
-		query := `
-			SELECT 
-				u.*, 
-				b.UserId IS NOT NULL AS IsBot 
-			FROM 
-				Users u 
-			LEFT JOIN 
-				Bots b ON ( b.UserId = u.Id ) 
-			WHERE
-				Id > :AfterId
-			ORDER BY
-				Id ASC
-			LIMIT :Limit
-		`
-
-		params := map[string]interface{}{
-			"AfterId": afterId,
-			"Limit":   limit,
-		}
+		builder := commonQuery.
+			Where("Id > :AfterId").Bind("AfterId", afterId).
+			OrderBy("Id ASC").
+			Limit(":Limit").Bind("Limit", limit)
 
 		var data []*model.User
-		if _, err := us.GetReplica().Select(&data, query, params); err != nil {
+		if _, err := us.GetReplica().Select(&data, builder.String(), builder.Bindings()); err != nil {
 			result.Err = model.NewAppError("SqlUserStore.GetAllAfter", "store.sql_user.get.app_error", nil, err.Error(), http.StatusInternalServerError)
 		}
 
