@@ -376,8 +376,28 @@ func (us SqlUserStore) GetAll() store.StoreChannel {
 
 func (us SqlUserStore) GetAllAfter(limit int, afterId string) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
+		query := `
+			SELECT 
+				u.*, 
+				b.UserId IS NOT NULL AS IsBot 
+			FROM 
+				Users u 
+			LEFT JOIN 
+				Bots b ON ( b.UserId = u.Id ) 
+			WHERE
+				Id > :AfterId
+			ORDER BY
+				Id ASC
+			LIMIT :Limit
+		`
+
+		params := map[string]interface{}{
+			"AfterId": afterId,
+			"Limit":   limit,
+		}
+
 		var data []*model.User
-		if _, err := us.GetReplica().Select(&data, "SELECT * FROM Users WHERE Id > :AfterId ORDER BY Id LIMIT :Limit", map[string]interface{}{"AfterId": afterId, "Limit": limit}); err != nil {
+		if _, err := us.GetReplica().Select(&data, query, params); err != nil {
 			result.Err = model.NewAppError("SqlUserStore.GetAllAfter", "store.sql_user.get.app_error", nil, err.Error(), http.StatusInternalServerError)
 		}
 
@@ -508,22 +528,32 @@ func (us SqlUserStore) InvalidateProfilesInChannelCache(channelId string) {
 
 func (us SqlUserStore) GetProfilesInChannel(channelId string, offset int, limit int) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
-		var users []*model.User
-
 		query := `
 				SELECT 
-					Users.* 
+					u.*,
+					b.UserId IS NOT NULL AS IsBot 
 				FROM 
-					Users, ChannelMembers 
+					Users u
+				JOIN
+					ChannelMembers cm ON ( cm.UserId = u.Id )
+				LEFT JOIN 
+					Bots b ON ( b.UserId = u.Id ) 
 				WHERE 
-					ChannelMembers.ChannelId = :ChannelId 
-					AND Users.Id = ChannelMembers.UserId 
+					cm.ChannelId = :ChannelId 
 				ORDER BY 
-					Users.Username ASC 
-				LIMIT :Limit OFFSET :Offset
+					u.Username ASC 
+				LIMIT :Limit 
+				OFFSET :Offset
 		`
 
-		if _, err := us.GetReplica().Select(&users, query, map[string]interface{}{"ChannelId": channelId, "Offset": offset, "Limit": limit}); err != nil {
+		params := map[string]interface{}{
+			"ChannelId": channelId,
+			"Offset":    offset,
+			"Limit":     limit,
+		}
+
+		var users []*model.User
+		if _, err := us.GetReplica().Select(&users, query, params); err != nil {
 			result.Err = model.NewAppError("SqlUserStore.GetProfilesInChannel", "store.sql_user.get_profiles.app_error", nil, err.Error(), http.StatusInternalServerError)
 		} else {
 
@@ -542,24 +572,37 @@ func (us SqlUserStore) GetProfilesInChannelByStatus(channelId string, offset int
 
 		query := `
 			SELECT 
-				Users.*
-			FROM Users
-				INNER JOIN ChannelMembers ON Users.Id = ChannelMembers.UserId
-				LEFT JOIN Status  ON Users.Id = Status.UserId
+				u.*,
+				b.UserId IS NOT NULL AS IsBot 
+			FROM 
+				Users u
+			INNER JOIN 
+				ChannelMembers cm ON ( cm.UserId = u.Id )
+			LEFT JOIN 
+				Status s ON ( s.UserId = u.Id )
+			LEFT JOIN 
+				Bots b ON ( b.UserId = u.Id ) 
 			WHERE
-				ChannelMembers.ChannelId = :ChannelId
+				cm.ChannelId = :ChannelId
 			ORDER BY 
-				CASE Status
+				CASE s.Status
 					WHEN 'online' THEN 1
 					WHEN 'away' THEN 2
 					WHEN 'dnd' THEN 3
 					ELSE 4
 				END,
-				Users.Username ASC 
-			LIMIT :Limit OFFSET :Offset
+				u.Username ASC 
+			LIMIT :Limit 
+			OFFSET :Offset
 		`
 
-		if _, err := us.GetReplica().Select(&users, query, map[string]interface{}{"ChannelId": channelId, "Offset": offset, "Limit": limit}); err != nil {
+		params := map[string]interface{}{
+			"ChannelId": channelId,
+			"Offset":    offset,
+			"Limit":     limit,
+		}
+
+		if _, err := us.GetReplica().Select(&users, query, params); err != nil {
 			result.Err = model.NewAppError("SqlUserStore.GetProfilesInChannelByStatus", "store.sql_user.get_profiles.app_error", nil, err.Error(), http.StatusInternalServerError)
 		} else {
 
@@ -572,6 +615,7 @@ func (us SqlUserStore) GetProfilesInChannelByStatus(channelId string, offset int
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetAllProfilesInChannel(channelId string, allowFromCache bool) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		if allowFromCache {
@@ -616,6 +660,7 @@ func (us SqlUserStore) GetAllProfilesInChannel(channelId string, allowFromCache 
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetProfilesNotInChannel(teamId string, channelId string, offset int, limit int) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		var users []*model.User
@@ -647,6 +692,7 @@ func (us SqlUserStore) GetProfilesNotInChannel(teamId string, channelId string, 
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetProfilesWithoutTeam(offset int, limit int) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		var users []*model.User
@@ -684,6 +730,7 @@ func (us SqlUserStore) GetProfilesWithoutTeam(offset int, limit int) store.Store
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetProfilesByUsernames(usernames []string, teamId string) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		var users []*model.User
@@ -721,6 +768,7 @@ type UserWithLastActivityAt struct {
 	LastActivityAt int64
 }
 
+// TODO
 func (us SqlUserStore) GetRecentlyActiveUsersForTeam(teamId string, offset, limit int) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		var users []*UserWithLastActivityAt
@@ -753,6 +801,7 @@ func (us SqlUserStore) GetRecentlyActiveUsersForTeam(teamId string, offset, limi
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetNewUsersForTeam(teamId string, offset, limit int) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		var users []*model.User
@@ -777,6 +826,7 @@ func (us SqlUserStore) GetNewUsersForTeam(teamId string, offset, limit int) stor
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetProfileByIds(userIds []string, allowFromCache bool) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		users := []*model.User{}
@@ -837,6 +887,7 @@ func (us SqlUserStore) GetProfileByIds(userIds []string, allowFromCache bool) st
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetSystemAdminProfiles() store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		var users []*model.User
@@ -857,6 +908,7 @@ func (us SqlUserStore) GetSystemAdminProfiles() store.StoreChannel {
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetByEmail(email string) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		email = strings.ToLower(email)
@@ -871,6 +923,7 @@ func (us SqlUserStore) GetByEmail(email string) store.StoreChannel {
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetByAuth(authData *string, authService string) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		if authData == nil || *authData == "" {
@@ -892,6 +945,7 @@ func (us SqlUserStore) GetByAuth(authData *string, authService string) store.Sto
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetAllUsingAuthService(authService string) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		var data []*model.User
@@ -904,6 +958,7 @@ func (us SqlUserStore) GetAllUsingAuthService(authService string) store.StoreCha
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetByUsername(username string) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		user := model.User{}
@@ -916,6 +971,7 @@ func (us SqlUserStore) GetByUsername(username string) store.StoreChannel {
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetForLogin(loginId string, allowSignInWithUsername, allowSignInWithEmail bool) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		params := map[string]interface{}{
@@ -1043,6 +1099,7 @@ func (us SqlUserStore) GetAnyUnreadPostCountForChannel(userId string, channelId 
 	})
 }
 
+// TODO
 func (us SqlUserStore) Search(teamId string, term string, options *model.UserSearchOptions) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		searchQuery := ""
@@ -1084,6 +1141,7 @@ func (us SqlUserStore) Search(teamId string, term string, options *model.UserSea
 	})
 }
 
+// TODO
 func (us SqlUserStore) SearchWithoutTeam(term string, options *model.UserSearchOptions) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		searchQuery := `
@@ -1111,6 +1169,7 @@ func (us SqlUserStore) SearchWithoutTeam(term string, options *model.UserSearchO
 	})
 }
 
+// TODO
 func (us SqlUserStore) SearchNotInTeam(notInTeamId string, term string, options *model.UserSearchOptions) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		searchQuery := `
@@ -1135,6 +1194,7 @@ func (us SqlUserStore) SearchNotInTeam(notInTeamId string, term string, options 
 	})
 }
 
+// TODO
 func (us SqlUserStore) SearchNotInChannel(teamId string, channelId string, term string, options *model.UserSearchOptions) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		searchQuery := ""
@@ -1180,6 +1240,7 @@ func (us SqlUserStore) SearchNotInChannel(teamId string, channelId string, term 
 	})
 }
 
+// TODO
 func (us SqlUserStore) SearchInChannel(channelId string, term string, options *model.UserSearchOptions) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		searchQuery := `
@@ -1324,6 +1385,7 @@ func (us SqlUserStore) AnalyticsGetSystemAdminCount() store.StoreChannel {
 	})
 }
 
+// TODO
 func (us SqlUserStore) GetProfilesNotInTeam(teamId string, offset int, limit int) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		var users []*model.User
